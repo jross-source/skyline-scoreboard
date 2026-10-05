@@ -1,0 +1,116 @@
+{
+  "name": "skyline-scoreboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Skyline Church executive recorded attendance scoreboard",
+  "scripts": {
+    "check": "node --check public/app.js && node --check public/core.js && node --check worker/index.js && node --check scripts/build.mjs",
+    "build": "node scripts/build.mjs",
+    "preview": "python3 -m http.server 8000 --directory public"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+
+# Skyline Scoreboard — Claude Code instructions
+
+## Purpose
+Build and maintain Skyline Church's executive attendance dashboard for Pastor Joe Ross. Keep the existing responsive design, filters, historical comparisons, reporting notes and print view. Numbers represent recorded participation, not unique people.
+
+## Commands
+Use Node.js 20+.
+- npm run check
+- npm run build
+- npm run preview (Python 3, static fallback snapshot only)
+
+The app has no third-party runtime dependencies. Plain HTML/CSS/JavaScript assets are embedded into a Cloudflare Worker by scripts/build.mjs. public/core.js contains calculations; public/app.js renders the UI.
+
+## Data rules
+- All-campus recorded in-person attendance excludes online but includes mid-week ministry participation already present in source campus totals.
+- Weekend worship attendance requires separately verified service data. Do not infer it from the monthly aggregate.
+- Monthly average = recorded monthly total / completed Sunday-ending reporting weeks.
+- YoY = current weekly average / same-month prior-year weekly average - 1.
+- Missing or zero prior-year denominator: N/A.
+- Green >=10%; yellow >-4% and <10%; red <=-4%, using unrounded rates.
+- Partial-month comparisons use prior-year full-month weekly average and must disclose that limitation.
+- Headline YoY uses completed months. YTD attendance averages include all completed reporting weeks.
+- Never add youth subservice counts on top of campus totals.
+- Preserve historical attendance, nulls and recorded zeros. A missing row does not establish a campus closure.
+- Source totals must reconcile: physical + online = reported.
+- Do not infer retention, invite culture, spiritual outcomes or leader effectiveness from attendance alone.
+- Preserve reporting notes until the source owner resolves them.
+
+## Live data and storage
+Site: https://skyline-attendance-executive.rocky-hawk-5313.chatgpt.site
+GET /api/status: reporting date and notes.
+GET /api/monthly?year=2026: bounded monthly records.
+GET /api/detail?year=2026&month=10&campus=Rancho: bounded detail records.
+GET /api/attendance: full dataset, metadata first.
+GET /api/update-instructions: source and authenticated update protocol.
+Source spreadsheet link and updater steps are in README.md.
+
+Production data lives in R2 binding BUCKET, object skyline/attendance.json. public/data.js is only the committed fallback/static-preview snapshot. Do not overwrite production history using a partial export. The existing POST writer replaces only the verified report year while preserving older years.
+
+## Authorization and deployment
+Never commit tokens, hashes from runtime settings, cookies or email contents. Keep protected POST authorization, input validation, stale-write protection and origin checks intact.
+The existing site is public; aggregate attendance is approved for public display. Personal data and internal coaching notes must stay private.
+GitHub merges are NOT automatically deployed. No deployment integration has been set up from this repository. Use branches for edits and explain validation. Do not claim a change is live based on a commit.
+The existing Sites project ID in .openai/hosting.json must be preserved. Sites service access does not transfer automatically to Claude.
+The intended Monday 3 p.m. America/Los_Angeles refresh is paused. Do not claim automation is running or silently resume/change tasks.
+Do not send emails or contact staff unless Joe explicitly instructs you to.
+
+## Validation
+Run syntax checks and build. For calculation changes, verify reporting-week counts, partial-month handling, missing denominators, campus/ministry filters and historical preservation. Check desktop/mobile layout for UI changes. State source reporting date and any unresolved limitations.
+
+# Skyline Scoreboard
+
+Lighting up the scoreboard in heaven.
+
+Executive attendance dashboard for Skyline Church, maintained by Pastor Joe Ross.
+
+Live site: https://skyline-attendance-executive.rocky-hawk-5313.chatgpt.site
+
+## Development
+
+Requires Node.js 20+ and Python 3 for the optional static preview. No npm dependencies.
+
+- `npm run check`: JavaScript syntax checks.
+- `npm run build`: embeds browser assets and updater instructions into `dist/server/index.js` (Cloudflare Worker).
+- `npm run preview`: serves `public/` on http://localhost:8000 using the committed fallback attendance snapshot. This preview does not connect to production storage or allow writes.
+
+### Files
+
+- `public/`: dashboard HTML, styles, UI logic, calculation engine and fallback dataset.
+- `worker/index.js`: production routes, R2 persistence and protected data writer.
+- `scripts/build.mjs`: dependency-free Worker build.
+- `.openai/hosting.json`: existing Sites project identity and R2 binding.
+- `CLAUDE.md`: editing guidance and measurement rules.
+
+### Editing and publishing
+
+Claude Code can edit this repository and propose changes on branches. GitHub is currently a source handoff, not an automatic deployment connection. Commits and merges here do not update the published website. Publishing remains through Sites with the existing project ID. No GitHub deployment workflow has been configured.
+
+Production attendance is stored in R2 and can differ from `public/data.js`. Changing the fallback dataset or republishing code does not replace an existing saved R2 dataset. Use the authenticated data-update protocol below for routine refreshes. Production secrets stay in the hosting environment; never commit credentials.
+
+# Skyline weekly attendance refresh
+
+Preserve this Site’s existing audience. The data updater requires the owner's existing Site service credential in a dedicated X-Skyline-Update-Authorization: Bearer header. The server verifies its SHA-256 hash against a protected runtime value; the raw credential is never stored in source or served to the browser. This protection remains in place when the dashboard is public or shared.
+
+## Weekly source and write path
+
+1. Get this Site with Sites tools; verify it is published, active and owned by the task's user. Obtain its existing service credential from get_site. Do not generate, rotate, store, print or put that credential in an automation prompt. Send it only to this Site origin, in OAI-Sites-Authorization: Bearer and X-Skyline-Update-Authorization: Bearer headers. The latter is required for writes even when the site is public. If the service token has changed and writes return 403, stop and report the credential mismatch; do not silently replace authorization or weaken access rules.
+2. Independently use the owner’s Gmail connector to locate the newest email from sflores@skylinechurch.org with subject Attendance Report. Read the email, take its reported Sunday date from the subject and its linked attendance spreadsheet. Fall back to the known 2026 spreadsheet only when the report matches that year. Current source: https://docs.google.com/spreadsheets/d/1wfc0JBM4xEMTj_g724i_ZdRoM6mvSY-_vU4MDwzxc6Y/edit.
+3. Read spreadsheet metadata, resolve the actual current-year Summary tab and read a bounded A1:N range covering all campus totals, online and Grand Totals. Do not use the incomplete historical current-year tab. Preserve the raw rows, including blanks. Use all campuses actually present. The writer maps Adults, Kids, Youth, YA/YALS and recorded campus totals. If labels, columns or totals change, do not guess.
+4. GET /api/attendance using the Site service credential; retain meta.asOf. POST /api/attendance using the same credential and JSON: {"asOf":"YYYY-MM-DD","expectedAsOf":"<read meta.asOf>","sourceUrl":"<verified linked Google spreadsheet URL>","reportSubject":"<email subject>","summaryRows":[["raw cell values", "..."]]}. No credentials in payloads or source. The report date must be a completed Sunday. The updater replaces only that source year and preserves all other years. It excludes future months, uses only completed reporting weeks for the current month and validates campus totals + online = grand totals. Repeating a source read on the same report date may correct source values.
+5. GET /api/attendance again and verify meta.asOf, latest monthly totals, reporting-week counts, and selected campus/category values against the source. GET /api/status for concise metadata. The website’s /data.js reads the same saved object, so the page updates on load with no rebuild or republish. Do not rebuild for routine refreshes.
+6. Retry only transient connector/storage failures. On stale-write 409, read current data and source again; never overwrite a newer date. If the report is unavailable, ambiguous or totals do not reconcile, leave the last verified snapshot and date intact and report the blocker in the task result. Do not send emails or contact anyone.
+
+## Comparisons
+
+Weekly averages divide by reporting weeks rather than calendar weeks not yet reported. For a partial month, monthly growth compares its to-date weekly average to the prior year’s full-month weekly average and is labeled. Headline year-over-year growth uses completed months only until the new month completes, while the headline attendance average includes all available reporting weeks. The prior full-month average cannot reconstruct a same-week prior-year comparison; do not imply it does.
+
+Green >=10%; yellow >-4% and <10%; red <=-4%, using unrounded rates. Preserve these thresholds and the reporting-change notes.
+
+## Bounded public reads
+GET /api/status checks freshness. GET /api/monthly?year=2026 returns monthly rows. GET /api/detail?year=2026 returns current-year campus/category records; optional month=10 and campus=Rancho reduce the response further. Metadata appears first in /api/attendance. reportingNotes may be supplied as up to eight plain text notes (600 characters each) and appear on the website. Preserve reporting notes until the source owner resolves them.
